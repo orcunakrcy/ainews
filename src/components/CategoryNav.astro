@@ -1,0 +1,36 @@
+---
+import { CATEGORIES } from "../lib/constants";
+
+interface Props {
+  active?: string;
+}
+
+const { active } = Astro.props;
+---
+
+<nav class="flex flex-wrap gap-2 mb-8">
+  <a
+    href="/"
+    class:list={[
+      "text-sm px-3 py-1.5 rounded-full transition-colors",
+      !active
+        ? "bg-accent text-surface font-medium"
+        : "bg-surface-lighter text-text-muted hover:text-text",
+    ]}
+  >
+    All
+  </a>
+  {CATEGORIES.map((cat) => (
+    <a
+      href={`/category/${cat.slug}`}
+      class:list={[
+        "text-sm px-3 py-1.5 rounded-full transition-colors",
+        active === cat.slug
+          ? "bg-accent text-surface font-medium"
+          : "bg-surface-lighter text-text-muted hover:text-text",
+      ]}
+    >
+      {cat.label}
+    </a>
+  ))}
+</nav>

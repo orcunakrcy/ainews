@@ -1,0 +1,42 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import NewsletterForm from "../components/NewsletterForm.astro";
+
+export const prerender = true;
+---
+
+<BaseLayout
+  title="Subscribe to AI News Newsletter"
+  description="Get the weekly AI digest delivered to your inbox every Sunday. Stay updated on the latest in artificial intelligence."
+>
+  <div class="max-w-2xl mx-auto px-4 py-16 text-center">
+    <h1 class="text-4xl font-bold mb-4">Weekly AI Digest</h1>
+    <p class="text-lg text-text-muted mb-8">
+      Every Sunday, we curate the most important AI stories of the week and deliver them
+      straight to your inbox. No spam, unsubscribe anytime.
+    </p>
+
+    <NewsletterForm />
+
+    <div class="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6 text-left">
+      <div class="bg-surface-light rounded-xl p-6">
+        <h3 class="font-semibold mb-2">Curated Content</h3>
+        <p class="text-sm text-text-muted">
+          Top 10-15 AI stories of the week, handpicked for relevance and impact.
+        </p>
+      </div>
+      <div class="bg-surface-light rounded-xl p-6">
+        <h3 class="font-semibold mb-2">Quick Summaries</h3>
+        <p class="text-sm text-text-muted">
+          Each story comes with a concise summary so you can stay informed in minutes.
+        </p>
+      </div>
+      <div class="bg-surface-light rounded-xl p-6">
+        <h3 class="font-semibold mb-2">Free Forever</h3>
+        <p class="text-sm text-text-muted">
+          No premium tiers, no paywalls. Just quality AI news, every week.
+        </p>
+      </div>
+    </div>
+  </div>
+</BaseLayout>

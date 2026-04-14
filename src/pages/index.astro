@@ -1,0 +1,86 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import ArticleCard from "../components/ArticleCard.astro";
+import CategoryNav from "../components/CategoryNav.astro";
+import NewsletterForm from "../components/NewsletterForm.astro";
+import { supabase, type Article } from "../lib/supabase";
+
+const page = Number(Astro.url.searchParams.get("page") || "1");
+const perPage = 12;
+const offset = (page - 1) * perPage;
+
+const { data: articles, count } = await supabase
+  .from("articles")
+  .select("*", { count: "exact" })
+  .eq("status", "published")
+  .order("published_at", { ascending: false })
+  .range(offset, offset + perPage - 1);
+
+const totalPages = Math.ceil((count || 0) / perPage);
+const typedArticles = (articles || []) as Article[];
+---
+
+<BaseLayout
+  title="AI News - Latest Artificial Intelligence News"
+  description="Your daily source for the latest AI news, curated and summarized. Stay updated on LLMs, robotics, computer vision, and more."
+>
+  <div class="max-w-6xl mx-auto px-4 py-8">
+    <!-- Hero -->
+    <section class="text-center mb-12">
+      <h1 class="text-4xl md:text-5xl font-bold mb-4">
+        Stay Ahead in <span class="text-accent">AI</span>
+      </h1>
+      <p class="text-lg text-text-muted max-w-2xl mx-auto">
+        The latest artificial intelligence news, curated and summarized daily.
+      </p>
+    </section>
+
+    <!-- Category Navigation -->
+    <CategoryNav />
+
+    <!-- Articles Grid -->
+    {typedArticles.length > 0 ? (
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {typedArticles.map((article) => (
+          <ArticleCard article={article} />
+        ))}
+      </div>
+    ) : (
+      <div class="text-center py-16">
+        <p class="text-text-muted text-lg">No articles yet. Check back soon!</p>
+      </div>
+    )}
+
+    <!-- Pagination -->
+    {totalPages > 1 && (
+      <div class="flex justify-center gap-2 mt-12">
+        {page > 1 && (
+          <a
+            href={`/?page=${page - 1}`}
+            class="px-4 py-2 bg-surface-lighter text-text-muted rounded-lg hover:text-text transition-colors"
+          >
+            &larr; Previous
+          </a>
+        )}
+        <span class="px-4 py-2 text-text-muted">
+          Page {page} of {totalPages}
+        </span>
+        {page < totalPages && (
+          <a
+            href={`/?page=${page + 1}`}
+            class="px-4 py-2 bg-surface-lighter text-text-muted rounded-lg hover:text-text transition-colors"
+          >
+            Next &rarr;
+          </a>
+        )}
+      </div>
+    )}
+
+    <!-- Newsletter CTA -->
+    <section class="mt-16 bg-surface-light rounded-2xl p-8 text-center">
+      <h2 class="text-2xl font-bold mb-2">Weekly AI Digest</h2>
+      <p class="text-text-muted mb-6">Get the top AI stories delivered to your inbox every Sunday.</p>
+      <NewsletterForm />
+    </section>
+  </div>
+</BaseLayout>

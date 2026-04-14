@@ -1,0 +1,75 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import ArticleCard from "../../components/ArticleCard.astro";
+import CategoryNav from "../../components/CategoryNav.astro";
+import { supabase, type Article } from "../../lib/supabase";
+import { CATEGORIES } from "../../lib/constants";
+
+const { category } = Astro.params;
+
+const validCategory = CATEGORIES.find((c) => c.slug === category);
+if (!validCategory) {
+  return Astro.redirect("/404");
+}
+
+const page = Number(Astro.url.searchParams.get("page") || "1");
+const perPage = 12;
+const offset = (page - 1) * perPage;
+
+const { data: articles, count } = await supabase
+  .from("articles")
+  .select("*", { count: "exact" })
+  .eq("status", "published")
+  .eq("category", category)
+  .order("published_at", { ascending: false })
+  .range(offset, offset + perPage - 1);
+
+const totalPages = Math.ceil((count || 0) / perPage);
+const typedArticles = (articles || []) as Article[];
+---
+
+<BaseLayout
+  title={`${validCategory.label} - AI News`}
+  description={`Latest ${validCategory.label} news in artificial intelligence.`}
+>
+  <div class="max-w-6xl mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold mb-6">{validCategory.label}</h1>
+    <CategoryNav active={category} />
+
+    {typedArticles.length > 0 ? (
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {typedArticles.map((article) => (
+          <ArticleCard article={article} />
+        ))}
+      </div>
+    ) : (
+      <div class="text-center py-16">
+        <p class="text-text-muted text-lg">No articles in this category yet.</p>
+      </div>
+    )}
+
+    {totalPages > 1 && (
+      <div class="flex justify-center gap-2 mt-12">
+        {page > 1 && (
+          <a
+            href={`/category/${category}?page=${page - 1}`}
+            class="px-4 py-2 bg-surface-lighter text-text-muted rounded-lg hover:text-text transition-colors"
+          >
+            &larr; Previous
+          </a>
+        )}
+        <span class="px-4 py-2 text-text-muted">
+          Page {page} of {totalPages}
+        </span>
+        {page < totalPages && (
+          <a
+            href={`/category/${category}?page=${page + 1}`}
+            class="px-4 py-2 bg-surface-lighter text-text-muted rounded-lg hover:text-text transition-colors"
+          >
+            Next &rarr;
+          </a>
+        )}
+      </div>
+    )}
+  </div>
+</BaseLayout>

@@ -1,0 +1,52 @@
+---
+import type { Article } from "../lib/supabase";
+
+interface Props {
+  article: Article;
+}
+
+const { article } = Astro.props;
+
+const date = article.published_at
+  ? new Date(article.published_at).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    })
+  : "";
+---
+
+<article class="bg-surface-light rounded-xl overflow-hidden hover:ring-1 hover:ring-accent/30 transition-all group">
+  {article.featured_image && (
+    <img
+      src={article.featured_image}
+      alt={article.title}
+      class="w-full h-48 object-cover"
+      loading="lazy"
+    />
+  )}
+  <div class="p-5">
+    <div class="flex items-center gap-2 mb-3">
+      <a
+        href={`/category/${article.category}`}
+        class="text-xs font-medium bg-primary/20 text-primary px-2 py-1 rounded-full hover:bg-primary/30 transition-colors"
+      >
+        {article.category}
+      </a>
+      <span class="text-xs text-text-muted">{date}</span>
+    </div>
+    <h2 class="text-lg font-semibold text-text mb-2 group-hover:text-accent transition-colors">
+      <a href={`/blog/${article.slug}`}>{article.title}</a>
+    </h2>
+    <p class="text-sm text-text-muted line-clamp-3">{article.summary}</p>
+    <div class="mt-4 flex items-center justify-between">
+      <span class="text-xs text-text-muted">{article.source_name}</span>
+      <a
+        href={`/blog/${article.slug}`}
+        class="text-sm text-accent hover:underline"
+      >
+        Read more &rarr;
+      </a>
+    </div>
+  </div>
+</article>

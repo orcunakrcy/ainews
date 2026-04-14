@@ -1,0 +1,97 @@
+---
+import BaseLayout from "./BaseLayout.astro";
+import type { Article } from "../lib/supabase";
+
+interface Props {
+  article: Article;
+}
+
+const { article } = Astro.props;
+const siteUrl = import.meta.env.SITE_URL || Astro.site?.toString() || "";
+
+const date = article.published_at
+  ? new Date(article.published_at).toLocaleDateString("en-US", {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    })
+  : "";
+
+const wordCount = article.content.split(/\s+/).length;
+const readingTime = Math.max(1, Math.ceil(wordCount / 200));
+
+const jsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "NewsArticle",
+  headline: article.title,
+  description: article.meta_description || article.summary,
+  datePublished: article.published_at,
+  image: article.featured_image,
+  author: { "@type": "Organization", name: "AI News" },
+  publisher: { "@type": "Organization", name: "AI News" },
+  mainEntityOfPage: `${siteUrl}/blog/${article.slug}`,
+});
+---
+
+<BaseLayout
+  title={`${article.title} | AI News`}
+  description={article.meta_description || article.summary}
+  ogImage={article.featured_image || undefined}
+  articleDate={article.published_at || undefined}
+  category={article.category}
+>
+  <Fragment slot="default">
+    <script type="application/ld+json" set:html={jsonLd} />
+    <article class="max-w-3xl mx-auto px-4 py-12">
+      <div class="mb-8">
+        <div class="flex items-center gap-3 mb-4">
+          <a
+            href={`/category/${article.category}`}
+            class="text-sm font-medium bg-primary/20 text-primary px-3 py-1 rounded-full hover:bg-primary/30 transition-colors"
+          >
+            {article.category}
+          </a>
+          <span class="text-sm text-text-muted">{date}</span>
+          <span class="text-sm text-text-muted">&middot; {readingTime} min read</span>
+        </div>
+        <h1 class="text-3xl md:text-4xl font-bold text-text leading-tight">{article.title}</h1>
+        <p class="mt-4 text-lg text-text-muted">{article.summary}</p>
+      </div>
+
+      {article.featured_image && (
+        <img
+          src={article.featured_image}
+          alt={article.title}
+          class="w-full rounded-xl mb-8"
+        />
+      )}
+
+      <div
+        class="prose prose-invert prose-lg max-w-none
+          prose-headings:text-text prose-p:text-text-muted
+          prose-a:text-accent prose-a:no-underline hover:prose-a:underline
+          prose-strong:text-text prose-code:text-accent"
+        set:html={article.content}
+      />
+
+      <div class="mt-12 pt-8 border-t border-surface-lighter flex items-center justify-between">
+        <div class="text-sm text-text-muted">
+          Source:
+          <a href={article.source_url} target="_blank" rel="noopener noreferrer" class="text-accent hover:underline">
+            {article.source_name}
+          </a>
+        </div>
+        {article.tags.length > 0 && (
+          <div class="flex gap-2">
+            {article.tags.map((tag) => (
+              <span class="text-xs bg-surface-lighter text-text-muted px-2 py-1 rounded-full">
+                #{tag}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </article>
+  </Fragment>
+</BaseLayout>

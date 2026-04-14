@@ -1,0 +1,45 @@
+---
+import ArticleLayout from "../../layouts/ArticleLayout.astro";
+import ArticleCard from "../../components/ArticleCard.astro";
+import { supabase, type Article } from "../../lib/supabase";
+
+const { slug } = Astro.params;
+
+const { data: article } = await supabase
+  .from("articles")
+  .select("*")
+  .eq("slug", slug)
+  .eq("status", "published")
+  .single();
+
+if (!article) {
+  return Astro.redirect("/404");
+}
+
+const typedArticle = article as Article;
+
+// Related articles (same category, different slug)
+const { data: related } = await supabase
+  .from("articles")
+  .select("*")
+  .eq("status", "published")
+  .eq("category", typedArticle.category)
+  .neq("slug", slug)
+  .order("published_at", { ascending: false })
+  .limit(3);
+
+const relatedArticles = (related || []) as Article[];
+---
+
+<ArticleLayout article={typedArticle} />
+
+{relatedArticles.length > 0 && (
+  <section class="max-w-6xl mx-auto px-4 pb-16">
+    <h2 class="text-2xl font-bold mb-6">Related Articles</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {relatedArticles.map((r) => (
+        <ArticleCard article={r} />
+      ))}
+    </div>
+  </section>
+)}

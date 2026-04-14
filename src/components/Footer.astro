@@ -1,0 +1,47 @@
+---
+import { CATEGORIES } from "../lib/constants";
+---
+
+<footer class="border-t border-surface-lighter bg-surface mt-16">
+  <div class="max-w-6xl mx-auto px-4 py-12">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+      <div>
+        <a href="/" class="text-xl font-bold text-text">
+          AI<span class="text-accent">News</span>
+        </a>
+        <p class="mt-2 text-sm text-text-muted">
+          Your daily dose of AI news, curated and summarized.
+        </p>
+      </div>
+      <div>
+        <h3 class="font-semibold text-text mb-3">Categories</h3>
+        <ul class="space-y-2">
+          {CATEGORIES.map((cat) => (
+            <li>
+              <a
+                href={`/category/${cat.slug}`}
+                class="text-sm text-text-muted hover:text-accent transition-colors"
+              >
+                {cat.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div>
+        <h3 class="font-semibold text-text mb-3">Stay Updated</h3>
+        <p class="text-sm text-text-muted mb-3">Get the weekly AI digest in your inbox.</p>
+        <a
+          href="/newsletter"
+          class="inline-block text-sm bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-lg transition-colors"
+        >
+          Subscribe to Newsletter
+        </a>
+      </div>
+    </div>
+    <div class="mt-8 pt-8 border-t border-surface-lighter text-center text-sm text-text-muted">
+      <p>&copy; {new Date().getFullYear()} AI News. All rights reserved.</p>
+      <a href="/rss.xml" class="hover:text-accent transition-colors">RSS Feed</a>
+    </div>
+  </div>
+</footer>
