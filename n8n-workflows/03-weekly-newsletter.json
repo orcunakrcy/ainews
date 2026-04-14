@@ -1,0 +1,156 @@
+{
+  "name": "Weekly Newsletter",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 0"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Sunday 9 AM UTC",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "articles",
+        "returnAll": false,
+        "limit": 15,
+        "filterType": "string",
+        "filterString": "status=eq.published&published_at=gte.{{ $now.minus(7, 'days').toISO() }}&order=relevance_score.desc"
+      },
+      "id": "get-week-articles",
+      "name": "Get Week's Top Articles",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [220, 0],
+      "credentials": {
+        "supabaseApi": {
+          "id": "SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase AI News"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate newsletter HTML\nconst siteUrl = '{{ $env.SITE_URL || \"https://ainews.vercel.app\" }}';\nconst articles = $input.all();\nconst weekStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);\nconst weekRange = `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;\n\nlet articlesList = '';\nfor (const item of articles) {\n  const a = item.json;\n  const date = new Date(a.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });\n  articlesList += `\n    <tr>\n      <td style=\"padding: 16px 0; border-bottom: 1px solid #334155;\">\n        <span style=\"display: inline-block; background: #6366f120; color: #6366f1; font-size: 11px; padding: 2px 8px; border-radius: 12px; margin-bottom: 6px;\">${a.category}</span>\n        <span style=\"color: #94a3b8; font-size: 11px; margin-left: 8px;\">${date}</span>\n        <br/>\n        <a href=\"${siteUrl}/blog/${a.slug}\" style=\"color: #f8fafc; font-size: 16px; font-weight: 600; text-decoration: none;\">${a.title}</a>\n        <br/>\n        <p style=\"color: #94a3b8; font-size: 14px; margin: 6px 0 0 0; line-height: 1.5;\">${a.summary}</p>\n      </td>\n    </tr>`;\n}\n\nconst subject = `AI News Weekly Digest - ${weekRange}`;\n\nconst html = `\n<!DOCTYPE html>\n<html>\n<head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"></head>\n<body style=\"margin: 0; padding: 0; background-color: #0f172a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background-color: #0f172a;\">\n    <tr><td align=\"center\" style=\"padding: 40px 20px;\">\n      <table width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"background-color: #1e293b; border-radius: 12px; overflow: hidden;\">\n        <!-- Header -->\n        <tr><td style=\"background: linear-gradient(135deg, #6366f1, #22d3ee); padding: 32px; text-align: center;\">\n          <h1 style=\"margin: 0; color: white; font-size: 28px;\">AI News Weekly</h1>\n          <p style=\"margin: 8px 0 0 0; color: rgba(255,255,255,0.8); font-size: 14px;\">${weekRange}</p>\n        </td></tr>\n        \n        <!-- Intro -->\n        <tr><td style=\"padding: 24px 32px 0;\">\n          <p style=\"color: #94a3b8; font-size: 14px; line-height: 1.6;\">Here are the top AI stories from this week. Click any headline to read the full article.</p>\n        </td></tr>\n        \n        <!-- Articles -->\n        <tr><td style=\"padding: 8px 32px;\">\n          <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\">\n            ${articlesList}\n          </table>\n        </td></tr>\n        \n        <!-- CTA -->\n        <tr><td style=\"padding: 24px 32px; text-align: center;\">\n          <a href=\"${siteUrl}\" style=\"display: inline-block; background: #6366f1; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;\">Read More on AI News</a>\n        </td></tr>\n        \n        <!-- Footer -->\n        <tr><td style=\"padding: 24px 32px; border-top: 1px solid #334155; text-align: center;\">\n          <p style=\"color: #64748b; font-size: 12px; margin: 0;\">You're receiving this because you subscribed to AI News.</p>\n          <p style=\"color: #64748b; font-size: 12px; margin: 8px 0 0 0;\"><a href=\"${siteUrl}/api/unsubscribe?token={{UNSUBSCRIBE_TOKEN}}\" style=\"color: #6366f1;\">Unsubscribe</a></p>\n        </td></tr>\n      </table>\n    </td></tr>\n  </table>\n</body>\n</html>`;\n\nreturn [{\n  json: {\n    subject,\n    html,\n    article_count: articles.length,\n    article_ids: articles.map(a => a.json.id)\n  }\n}];"
+      },
+      "id": "build-newsletter",
+      "name": "Build Newsletter HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "subscribers",
+        "returnAll": true,
+        "filterType": "string",
+        "filterString": "confirmed=eq.true&unsubscribed_at=is.null"
+      },
+      "id": "get-subscribers",
+      "name": "Get Active Subscribers",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [660, 0],
+      "credentials": {
+        "supabaseApi": {
+          "id": "SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase AI News"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare individual emails with unsubscribe tokens\nconst newsletter = $('Build Newsletter HTML').first().json;\nconst subscribers = $input.all();\n\nconst emails = [];\nfor (const sub of subscribers) {\n  const personalizedHtml = newsletter.html.replace(\n    '{{UNSUBSCRIBE_TOKEN}}',\n    sub.json.unsubscribe_token\n  );\n  \n  emails.push({\n    json: {\n      to: sub.json.email,\n      subject: newsletter.subject,\n      html: personalizedHtml\n    }\n  });\n}\n\nreturn emails;"
+      },
+      "id": "personalize",
+      "name": "Personalize Emails",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 0]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {
+          "senderName": "AI News",
+          "replyTo": "noreply@ainews.com"
+        }
+      },
+      "id": "send-email",
+      "name": "Send via Resend",
+      "type": "n8n-nodes-base.resend",
+      "typeVersion": 1,
+      "position": [1100, 0],
+      "credentials": {
+        "resendApi": {
+          "id": "RESEND_CREDENTIAL_ID",
+          "name": "Resend"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "tableId": "newsletters",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldName": "subject", "fieldValue": "={{ $('Build Newsletter HTML').first().json.subject }}" },
+            { "fieldName": "content_html", "fieldValue": "={{ $('Build Newsletter HTML').first().json.html }}" },
+            { "fieldName": "recipient_count", "fieldValue": "={{ $('Get Active Subscribers').all().length }}" },
+            { "fieldName": "sent_at", "fieldValue": "={{ $now.toISO() }}" }
+          ]
+        }
+      },
+      "id": "save-newsletter",
+      "name": "Save Newsletter Record",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1320, 0],
+      "credentials": {
+        "supabaseApi": {
+          "id": "SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase AI News"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Sunday 9 AM UTC": {
+      "main": [[{ "node": "Get Week's Top Articles", "type": "main", "index": 0 }]]
+    },
+    "Get Week's Top Articles": {
+      "main": [[{ "node": "Build Newsletter HTML", "type": "main", "index": 0 }]]
+    },
+    "Build Newsletter HTML": {
+      "main": [[{ "node": "Get Active Subscribers", "type": "main", "index": 0 }]]
+    },
+    "Get Active Subscribers": {
+      "main": [[{ "node": "Personalize Emails", "type": "main", "index": 0 }]]
+    },
+    "Personalize Emails": {
+      "main": [[{ "node": "Send via Resend", "type": "main", "index": 0 }]]
+    },
+    "Send via Resend": {
+      "main": [[{ "node": "Save Newsletter Record", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [{ "name": "AI News" }]
+}

@@ -1,0 +1,129 @@
+{
+  "name": "Tweet New Articles",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 1,7,13,19 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 6h (staggered)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "articles",
+        "returnAll": false,
+        "limit": 3,
+        "filterType": "string",
+        "filterString": "status=eq.published&id=not.in.(select article_id from tweets)"
+      },
+      "id": "get-untweeted",
+      "name": "Get Untweeted Articles",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [220, 0],
+      "credentials": {
+        "supabaseApi": {
+          "id": "SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase AI News"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare tweet text for each article\nconst siteUrl = '{{ $env.SITE_URL || \"https://ainews.vercel.app\" }}';\nconst results = [];\n\nfor (const item of $input.all()) {\n  const article = item.json;\n  let tweetText = article.twitter_text || article.summary || article.title;\n  \n  const articleUrl = `${siteUrl}/blog/${article.slug}`;\n  \n  // Ensure tweet + URL fits in 280 chars (URLs count as 23 chars on Twitter)\n  const maxTextLength = 280 - 25; // 23 for URL + 2 for newlines\n  if (tweetText.length > maxTextLength) {\n    tweetText = tweetText.substring(0, maxTextLength - 3) + '...';\n  }\n  \n  results.push({\n    json: {\n      article_id: article.id,\n      tweet_text: `${tweetText}\\n\\n${articleUrl}`,\n      tweet_text_only: tweetText\n    }\n  });\n}\n\nreturn results;"
+      },
+      "id": "prepare-tweet",
+      "name": "Prepare Tweet Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "text": "={{ $json.tweet_text }}",
+        "additionalFields": {}
+      },
+      "id": "post-tweet",
+      "name": "Post Tweet",
+      "type": "n8n-nodes-base.twitter",
+      "typeVersion": 2,
+      "position": [660, 0],
+      "credentials": {
+        "twitterOAuth2Api": {
+          "id": "TWITTER_CREDENTIAL_ID",
+          "name": "Twitter/X"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "tableId": "tweets",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldName": "article_id", "fieldValue": "={{ $json.article_id || $('Prepare Tweet Text').item.json.article_id }}" },
+            { "fieldName": "tweet_text", "fieldValue": "={{ $('Prepare Tweet Text').item.json.tweet_text_only }}" },
+            { "fieldName": "tweet_id", "fieldValue": "={{ $json.id || '' }}" },
+            { "fieldName": "status", "fieldValue": "posted" },
+            { "fieldName": "posted_at", "fieldValue": "={{ $now.toISO() }}" }
+          ]
+        }
+      },
+      "id": "save-tweet",
+      "name": "Save Tweet Record",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [880, 0],
+      "credentials": {
+        "supabaseApi": {
+          "id": "SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase AI News"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 30,
+        "unit": "seconds"
+      },
+      "id": "wait",
+      "name": "Wait 30s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1100, 0]
+    }
+  ],
+  "connections": {
+    "Every 6h (staggered)": {
+      "main": [[{ "node": "Get Untweeted Articles", "type": "main", "index": 0 }]]
+    },
+    "Get Untweeted Articles": {
+      "main": [[{ "node": "Prepare Tweet Text", "type": "main", "index": 0 }]]
+    },
+    "Prepare Tweet Text": {
+      "main": [[{ "node": "Post Tweet", "type": "main", "index": 0 }]]
+    },
+    "Post Tweet": {
+      "main": [[{ "node": "Save Tweet Record", "type": "main", "index": 0 }]]
+    },
+    "Save Tweet Record": {
+      "main": [[{ "node": "Wait 30s", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [{ "name": "AI News" }]
+}

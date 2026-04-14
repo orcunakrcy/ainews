@@ -1,0 +1,255 @@
+{
+  "name": "AI News Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 6 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "sources",
+        "returnAll": false,
+        "limit": 50,
+        "filterType": "string",
+        "filterString": "active=eq.true"
+      },
+      "id": "get-sources",
+      "name": "Get Active Sources",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [220, 0],
+      "credentials": {
+        "supabaseApi": {
+          "id": "SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase AI News"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.rss_url }}",
+        "options": {}
+      },
+      "id": "fetch-rss",
+      "name": "Fetch RSS Feed",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [440, 0],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter items from last 24 hours and format them\nconst now = new Date();\nconst oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);\n\nconst allItems = [];\n\nfor (const item of $input.all()) {\n  const pubDate = new Date(item.json.pubDate || item.json.isoDate || '');\n  \n  // Skip items older than 24 hours\n  if (pubDate < oneDayAgo) continue;\n  \n  allItems.push({\n    json: {\n      title: item.json.title || '',\n      link: item.json.link || item.json.url || '',\n      description: (item.json.contentSnippet || item.json.description || '').substring(0, 1000),\n      pubDate: pubDate.toISOString(),\n      sourceName: item.json._sourceName || 'Unknown',\n      sourceCategory: item.json._sourceCategory || 'general'\n    }\n  });\n}\n\nreturn allItems.length > 0 ? allItems : [{ json: { _empty: true } }];"
+      },
+      "id": "filter-recent",
+      "name": "Filter Last 24h",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "not-empty",
+              "leftValue": "={{ $json._empty }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notTrue"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "filter-empty",
+      "name": "Has Items?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [880, 0]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "articles",
+        "returnAll": false,
+        "limit": 200,
+        "filterType": "string",
+        "filterString": "created_at=gte.{{ $now.minus(2, 'days').toISO() }}"
+      },
+      "id": "get-existing",
+      "name": "Get Existing Articles (48h)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1100, 0],
+      "credentials": {
+        "supabaseApi": {
+          "id": "SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase AI News"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Deduplicate: remove items whose URL already exists in DB\nconst newItems = $('Has Items?').all();\nconst existingArticles = $('Get Existing Articles (48h)').all();\n\nconst existingUrls = new Set(\n  existingArticles.map(a => a.json.source_url).filter(Boolean)\n);\n\nconst existingHashes = new Set(\n  existingArticles.map(a => a.json.content_hash).filter(Boolean)\n);\n\n// Simple title hash for dedup\nfunction titleHash(title) {\n  return title\n    .toLowerCase()\n    .replace(/[^a-z0-9\\s]/g, '')\n    .split(/\\s+/)\n    .filter(w => !['the','a','an','is','are','was','were','in','on','at','to','for','of','and','or','but','with','by','from','as','its','it','this','that','will','has','have','had'].includes(w))\n    .sort()\n    .join(' ');\n}\n\nconst dedupedItems = [];\nconst seenHashes = new Set();\n\nfor (const item of newItems) {\n  const url = item.json.link;\n  const hash = titleHash(item.json.title);\n  \n  if (existingUrls.has(url)) continue;\n  if (existingHashes.has(hash)) continue;\n  if (seenHashes.has(hash)) continue;\n  \n  seenHashes.add(hash);\n  dedupedItems.push({\n    json: {\n      ...item.json,\n      content_hash: hash\n    }\n  });\n}\n\n// Limit to 15 candidates per run\nreturn dedupedItems.slice(0, 15);"
+      },
+      "id": "dedup",
+      "name": "Deduplicate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Batch items for GPT processing (groups of 5)\nconst items = $input.all();\nconst batches = [];\n\nfor (let i = 0; i < items.length; i += 5) {\n  const batch = items.slice(i, i + 5);\n  batches.push({\n    json: {\n      batch: batch.map(item => ({\n        title: item.json.title,\n        link: item.json.link,\n        description: item.json.description,\n        pubDate: item.json.pubDate,\n        sourceName: item.json.sourceName,\n        sourceCategory: item.json.sourceCategory,\n        content_hash: item.json.content_hash\n      }))\n    }\n  });\n}\n\nreturn batches.length > 0 ? batches : [{ json: { _empty: true } }];"
+      },
+      "id": "batch-items",
+      "name": "Create Batches of 5",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1540, 0]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "You are an AI news editor for a technology blog focused on artificial intelligence.\n\nYour job is to take raw RSS feed items and produce original, well-written blog posts.\nYou MUST NOT copy text from the original — rewrite with your own analysis and perspective.\nInclude context about why each story matters for the AI industry.\n\nFor each item, determine if it's newsworthy (score 1-10). Only produce posts for items scoring >= 6.\n\nReturn ONLY valid JSON with this exact structure:\n{\n  \"items\": [\n    {\n      \"original_url\": \"the source URL\",\n      \"relevance_score\": 8,\n      \"publish\": true,\n      \"title\": \"Compelling blog title\",\n      \"slug\": \"url-friendly-slug\",\n      \"content\": \"<p>Full blog post in HTML, 300-600 words. Use <p>, <h2>, <h3>, <ul>, <li>, <strong>, <em> tags. No markdown.</p>\",\n      \"summary\": \"2-3 sentence summary for cards\",\n      \"twitter_text\": \"280 char tweet with relevant hashtags\",\n      \"category\": \"one of: llms, robotics, computer-vision, ai-policy, research, startups, general\",\n      \"tags\": [\"tag1\", \"tag2\"],\n      \"meta_description\": \"SEO meta description, max 155 chars\"\n    }\n  ]\n}",
+              "role": "system"
+            },
+            {
+              "content": "=Process these RSS items and return JSON:\n\n{{ JSON.stringify($json.batch) }}",
+              "role": "user"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 4000
+        }
+      },
+      "id": "openai-process",
+      "name": "GPT-4o Mini Process",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [1760, 0],
+      "credentials": {
+        "openAiApi": {
+          "id": "OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse GPT response and filter publishable articles\nconst results = [];\n\nfor (const item of $input.all()) {\n  try {\n    let parsed = item.json;\n    \n    // Handle if response is in message.content\n    if (parsed.message && parsed.message.content) {\n      parsed = JSON.parse(parsed.message.content);\n    }\n    \n    if (!parsed.items) continue;\n    \n    for (const article of parsed.items) {\n      if (!article.publish || article.relevance_score < 6) continue;\n      if (!article.title || !article.content || !article.slug) continue;\n      \n      // Ensure slug is unique by adding timestamp\n      const slug = article.slug + '-' + Date.now().toString(36);\n      \n      results.push({\n        json: {\n          title: article.title,\n          slug: slug,\n          content: article.content,\n          summary: article.summary,\n          twitter_text: article.twitter_text || '',\n          category: article.category || 'general',\n          tags: article.tags || [],\n          source_url: article.original_url || '',\n          source_name: article.source_name || 'Unknown',\n          source_title: article.title,\n          meta_description: article.meta_description || article.summary,\n          relevance_score: article.relevance_score,\n          status: 'published',\n          published_at: new Date().toISOString(),\n          content_hash: article.title.toLowerCase().replace(/[^a-z0-9\\s]/g, '').split(/\\s+/).sort().join(' ')\n        }\n      });\n    }\n  } catch (e) {\n    // Skip unparseable responses\n  }\n}\n\n// Cap at 7 articles per run\nreturn results.slice(0, 7);"
+      },
+      "id": "parse-response",
+      "name": "Parse & Filter (max 7)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1980, 0]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "tableId": "articles",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldName": "title", "fieldValue": "={{ $json.title }}" },
+            { "fieldName": "slug", "fieldValue": "={{ $json.slug }}" },
+            { "fieldName": "content", "fieldValue": "={{ $json.content }}" },
+            { "fieldName": "summary", "fieldValue": "={{ $json.summary }}" },
+            { "fieldName": "twitter_text", "fieldValue": "={{ $json.twitter_text }}" },
+            { "fieldName": "category", "fieldValue": "={{ $json.category }}" },
+            { "fieldName": "source_url", "fieldValue": "={{ $json.source_url }}" },
+            { "fieldName": "source_name", "fieldValue": "={{ $json.source_name }}" },
+            { "fieldName": "source_title", "fieldValue": "={{ $json.source_title }}" },
+            { "fieldName": "meta_description", "fieldValue": "={{ $json.meta_description }}" },
+            { "fieldName": "relevance_score", "fieldValue": "={{ $json.relevance_score }}" },
+            { "fieldName": "status", "fieldValue": "published" },
+            { "fieldName": "published_at", "fieldValue": "={{ $json.published_at }}" },
+            { "fieldName": "content_hash", "fieldValue": "={{ $json.content_hash }}" }
+          ]
+        }
+      },
+      "id": "insert-article",
+      "name": "Insert to Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [2200, 0],
+      "credentials": {
+        "supabaseApi": {
+          "id": "SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase AI News"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Every 6 Hours": {
+      "main": [[{ "node": "Get Active Sources", "type": "main", "index": 0 }]]
+    },
+    "Get Active Sources": {
+      "main": [[{ "node": "Fetch RSS Feed", "type": "main", "index": 0 }]]
+    },
+    "Fetch RSS Feed": {
+      "main": [[{ "node": "Filter Last 24h", "type": "main", "index": 0 }]]
+    },
+    "Filter Last 24h": {
+      "main": [[{ "node": "Has Items?", "type": "main", "index": 0 }]]
+    },
+    "Has Items?": {
+      "main": [[{ "node": "Get Existing Articles (48h)", "type": "main", "index": 0 }]]
+    },
+    "Get Existing Articles (48h)": {
+      "main": [[{ "node": "Deduplicate", "type": "main", "index": 0 }]]
+    },
+    "Deduplicate": {
+      "main": [[{ "node": "Create Batches of 5", "type": "main", "index": 0 }]]
+    },
+    "Create Batches of 5": {
+      "main": [[{ "node": "GPT-4o Mini Process", "type": "main", "index": 0 }]]
+    },
+    "GPT-4o Mini Process": {
+      "main": [[{ "node": "Parse & Filter (max 7)", "type": "main", "index": 0 }]]
+    },
+    "Parse & Filter (max 7)": {
+      "main": [[{ "node": "Insert to Supabase", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [{ "name": "AI News" }]
+}
